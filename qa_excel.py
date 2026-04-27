@@ -231,6 +231,8 @@ class QAWorkbook:
         poi = poi.strip()
         if not category or not region or not poi:
             raise ValueError("分类、区域和 POI 都不能为空")
+        if region not in self.regions(category):
+            raise ValueError(f"区域“{region}”不属于分类“{category}”，请从该分类已有区域中选择")
         if category not in self.templates or not self.templates[category]:
             raise ValueError(f"分类“{category}”还没有可套用的问题模板")
         if any(

@@ -327,9 +327,10 @@ class BulkAnswerDialog(QDialog):
 
 
 class AddPoiDialog(QDialog):
-    def __init__(self, store: QAWorkbook, parent=None):
+    def __init__(self, store: QAWorkbook, category: str, current_region: str = "", parent=None):
         super().__init__(parent)
         self.store = store
+        self.category = category.strip()
         self.setWindowTitle("新增 POI")
         self.setMinimumWidth(420)
 
@@ -338,22 +339,28 @@ class AddPoiDialog(QDialog):
         form.setHorizontalSpacing(12)
         form.setVerticalSpacing(12)
 
-        self.category_combo = QComboBox()
-        self.category_combo.addItems(store.categories())
+        self.category_label = QLabel(self.category)
+        self.category_label.setObjectName("sectionTitle")
         self.region_combo = QComboBox()
-        self.region_combo.setEditable(True)
+        self.region_combo.setEditable(False)
+        self.region_combo.setMaxVisibleItems(15)
+        self.region_combo.addItems(store.regions(self.category))
+        if current_region:
+            index = self.region_combo.findText(current_region)
+            if index >= 0:
+                self.region_combo.setCurrentIndex(index)
         self.poi_input = QLineEdit()
         self.poi_input.setPlaceholderText("输入新的 POI 名称")
 
         form.addWidget(QLabel("分类"), 0, 0)
-        form.addWidget(self.category_combo, 0, 1)
+        form.addWidget(self.category_label, 0, 1)
         form.addWidget(QLabel("区域"), 1, 0)
         form.addWidget(self.region_combo, 1, 1)
         form.addWidget(QLabel("POI"), 2, 0)
         form.addWidget(self.poi_input, 2, 1)
         layout.addLayout(form)
 
-        hint = QLabel("新增后会自动套用该分类当前的问题模板，所有回复内容留空。")
+        hint = QLabel("新增后会自动套用当前分类的问题模板，所有回复内容留空。区域只能从当前分类已有区域中选择。")
         hint.setObjectName("mutedLabel")
         hint.setWordWrap(True)
         layout.addWidget(hint)
@@ -363,22 +370,22 @@ class AddPoiDialog(QDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
-        self.category_combo.currentTextChanged.connect(self._load_regions)
-        self._load_regions(self.category_combo.currentText())
-
-    def _load_regions(self, category: str) -> None:
-        current = self.region_combo.currentText().strip()
-        self.region_combo.clear()
-        self.region_combo.addItems(self.store.regions(category))
-        if current:
-            self.region_combo.setEditText(current)
-
     def values(self) -> tuple[str, str, str]:
         return (
-            self.category_combo.currentText().strip(),
+            self.category,
             self.region_combo.currentText().strip(),
             self.poi_input.text().strip(),
         )
+
+    def accept(self) -> None:
+        _, region, poi = self.values()
+        if not region:
+            QMessageBox.warning(self, "请选择区域", "新增 POI 必须选择当前分类下的区域。")
+            return
+        if not poi:
+            QMessageBox.warning(self, "请输入 POI", "POI 名称不能为空。")
+            return
+        super().accept()
 
 
 class MainWindow(QMainWindow):
@@ -953,7 +960,11 @@ class MainWindow(QMainWindow):
     def add_poi(self) -> None:
         if not self.ensure_editable():
             return
-        dialog = AddPoiDialog(self.store, self)
+        category = self.current_category or self.category_combo.currentText().strip()
+        if not category:
+            QMessageBox.information(self, "请选择分类", "请先选择一个分类，再新增 POI。")
+            return
+        dialog = AddPoiDialog(self.store, category, self.current_region, self)
         if dialog.exec() != QDialog.Accepted:
             return
         category, region, poi = dialog.values()
